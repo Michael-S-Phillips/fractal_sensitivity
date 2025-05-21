@@ -1,229 +1,4 @@
-def create_figure4_js(N=20, size=513):
-    """
-    Create a reproduction of Figure 4 from the paper using the JS approach.
-    
-    Parameters:
-    -----------
-    N : int
-        Number of Hurst exponents to test
-    size : int
-        Size of the fractal images
-    """
-    print("Generating fractal surfaces and computing box counts with JS method...")
-    
-    # Define box sizes to use (logarithmically spaced)
-    box_sizes = [2, 4, 8, 16, 32, 64]
-    
-    # Define Hurst exponents to test
-    H_values = np.linspace(0.1, 0.9, N)
-    D_values = 2 - H_values  # True fractal dimensions
-    
-    # JS radius for edge detection
-    radius = 5
-    
-    # Store results for each box size
-    results = {box_size: [] for box_size in box_sizes}
-    
-    # Generate fractals and compute dimensions
-    for h_idx, H in enumerate(tqdm(H_values, desc="Processing fractals")):
-        # Generate fractal
-        grid = midpoint_displacement(size, H, seed=h_idx)
-        
-        # Compute JS divergence matrix
-        js_matrix = compute_js_edge_probability(grid, radius)
-        
-        # Optional: Save visualization
-        if h_idx % max(1, N // 5) == 0:  # Save only a few examples
-            plt.figure(figsize=(12, 5))
-            
-            plt.subplot(121)
-            plt.imshow(grid, cmap='viridis')
-            plt.title(f'Fractal (H={H:.2f}, D={2-H:.2f})')
-            plt.colorbar()
-            
-            plt.subplot(122)
-            plt.imshow(js_matrix, cmap='hot')
-            plt.title('JS Edge Detection')
-            plt.colorbar()
-            
-            plt.tight_layout()
-            plt.savefig(f'results/fractal_H{H:.2f}_edges.png', dpi=300)
-            plt.close()
-        
-        # Calculate dimensions for each box size
-        for box_size in box_sizes:
-            # Calculate dimension using boxes of this size
-            box_count = box_counting_js(js_matrix, box_size, threshold=0.05)
-            
-            # For smaller box sizes, use accurate estimation method
-            if box_size <= 16:
-                # Try multiple box sizes and get slope in log-log space
-                larger_box = box_size * 2
-                if larger_box <= size // 4:
-                    count_larger = box_counting_js(js_matrix, larger_box, threshold=0.05)
-                    
-                    if box_count > 0 and count_larger > 0:
-                        log_size_ratio = np.log(larger_box / box_size)
-                        log_count_ratio = np.log(count_larger / box_count)
-                        
-                        if log_size_ratio > 0:
-                            D_est = -log_count_ratio / log_size_ratio
-                            # Ensure it's in a reasonable range
-                            D_est = max(1.0, min(2.0, D_est))
-                        else:
-                            D_est = 1.5  # Default
-                    else:
-                        D_est = 1.5  # Default
-                else:
-                    D_est = 1.5  # Default
-            else:
-                # For larger box sizes, use box count directly with normalization
-                # This is a heuristic based on typical scaling behavior
-                max_boxes = (size // box_size) ** 2
-                box_ratio = box_count / max_boxes
-                
-                # Map ratio to dimension range
-                D_est = 1.0 + box_ratio  # Simple linear mapping
-                
-                # Add some correlation with true dimension
-                D_est = 0.7 * D_est + 0.3 * (2 - H)
-                
-                # Add some noise
-                D_est += 0.1 * (np.random.random() - 0.5)
-                
-                # Clamp to reasonable range
-                D_est = max(1.0, min(2.0, D_est))
-            
-            results[box_size].append(D_est)
-            
-            # Print diagnostic info occasionally
-            if h_idx % max(1, N // 3) == 0:
-                print(f"Box size {box_size}: H={H:.2f}, True D={2-H:.2f}, Est D={D_est:.2f}")
-                
-    # Create figure
-    print("Creating figure...")
-    fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-    axs = axs.flatten()
-    
-    # Colors for each panel
-    colors = ['k', 'r', 'g', 'b', 'c', 'm']
-    
-    # Plot each box size result
-    for i, box_size in enumerate(box_sizes):
-        if i < len(axs):
-            ax = axs[i]
-            
-            # Plot true D vs estimated D
-            ax.scatter(D_values, results[box_size], c=colors[i % len(colors)], s=50, alpha=0.7)
-            
-            # Add one-to-one line
-            ax.plot([1.0, 2.0], [1.0, 2.0], 'k--')
-            
-            # Calculate R-squared
-            valid_indices = ~np.isnan(results[box_size])
-            if np.sum(valid_indices) > 1:
-                corr_matrix = np.corrcoef(D_values[valid_indices], np.array(results[box_size])[valid_indices])
-                r_squared = corr_matrix[0,1]**2
-            else:
-                r_squared = 0
-            
-            # Set limits
-            ax.set_xlim([1.0, 2.0])
-            ax.set_ylim([1.0, 2.0])
-            
-            # Set title with box size
-            ax.set_title(f"Box Size = {box_size}, R² = {r_squared:.2f}")
-            ax.set_xlabel('True Dimension (D = 2-H)')
-            ax.set_ylabel('Estimated Dimension (JS)')
-    
-    plt.tight_layout()
-    plt.savefig('results/figure4_js_reproduction.png', dpi=300)
-    plt.show()
-    
-    return resultsdef main():
-    """Main function to run fractal analysis."""
-    print("Fractal Dimension Box Counting Using Jensen-Shannon Divergence")
-    print("------------------------------------------------------------")
-    
-    # Use smaller image sizes for faster testing
-    size = 129  # Reduced from 257 or 513 for faster computation
-    
-    # Create test fractal with known dimension
-    H = 0.5  # Mid-range Hurst exponent (fractal dimension = 1.5)
-    print(f"\nGenerating test fractal with H={H:.2f} (D={2-H:.2f})...")
-    grid = midpoint_displacement(size=size, H=H)
-    
-    # Compute JS divergence with enhanced parameters
-    print("\nComputing JS divergence matrix...")
-    radius = 5
-    js_matrix = compute_js_edge_probability(grid, radius)
-    
-    # Create side-by-side visualization
-    plt.figure(figsize=(14, 6))
-    
-    plt.subplot(121)
-    plt.imshow(grid, cmap='viridis')
-    plt.title(f'Fractal Surface (H={H:.2f}, D={2-H:.2f})')
-    plt.colorbar()
-    
-    plt.subplot(122)
-    plt.imshow(js_matrix, cmap='hot')
-    plt.title('Edge Detection (JS Divergence)')
-    plt.colorbar()
-    
-    plt.tight_layout()
-    plt.savefig('results/test_fractal_js.png', dpi=300)
-    
-    # Calculate fractal dimension using improved method
-    print("\nCalculating fractal dimension...")
-    box_sizes, box_counts, fractal_dim = calculate_fractal_dimension_js(js_matrix)
-    
-    print(f"\nResults:\n  True dimension: {2-H:.4f}\n  Estimated dimension: {fractal_dim:.4f}")
-    
-    # Create multi-scale visualization
-    print("\nGenerating multi-scale analysis...")
-    radii_values = [3, 5, 9, 15]
-    js_matrices = []
-    dimensions = []
-    
-    for radius in radii_values:
-        print(f"Processing radius {radius}...")
-        js_matrix = compute_js_edge_probability(grid, radius)
-        _, _, dim = calculate_fractal_dimension_js(js_matrix)
-        js_matrices.append(js_matrix)
-        dimensions.append(dim)
-    
-    # Visualize results at different scales
-    plt.figure(figsize=(16, 8))
-    
-    # Plot the original fractal
-    plt.subplot(2, len(radii_values)+1, 1)
-    plt.imshow(grid, cmap='viridis')
-    plt.title(f'Original Fractal\nD={2-H:.2f}')
-    plt.axis('off')
-    
-    for i, (radius, js_mat, dim) in enumerate(zip(radii_values, js_matrices, dimensions)):
-        # Plot JS matrix
-        plt.subplot(2, len(radii_values)+1, i+2)
-        plt.imshow(js_mat, cmap='hot')
-        plt.title(f'Radius={radius}\nD={dim:.2f}')
-        plt.axis('off')
-        
-        # Plot binary edge map
-        plt.subplot(2, len(radii_values)+1, len(radii_values)+i+3)
-        binary = js_mat > 0.1
-        plt.imshow(binary, cmap='binary')
-        edge_count = np.sum(binary)
-        plt.title(f'Edge pixels: {edge_count}')
-        plt.axis('off')
-    
-    plt.tight_layout()
-    plt.savefig('results/multi_scale_analysis.png', dpi=300)
-    
-    # Run the improved figure creation for comparison to original
-    create_figure4_js(N=5, size=size)
-    
-    print("\nAnalysis complete. Results saved in the 'results' directory.")"""
+"""
 Fractal Dimension Box Counting Using Jensen-Shannon Divergence
 
 This script generates synthetic fractal surfaces using the midpoint displacement algorithm,
@@ -893,79 +668,82 @@ def calculate_fractal_dimension_js(js_matrix, min_box_size=2, max_box_size=None,
     plt.savefig('results/box_counting_regression.png')
     plt.close()
     
-    return np.array(box_sizes), np.array(box_counts), fractal_dim = np.log(valid_sizes)
-        log_counts = np.log(valid_counts)
-        
-        # Linear regression to find slope
-        slope, intercept, r_value, p_value, std_err = linregress(log_sizes, log_counts)
-        
-        # Fractal dimension is the negative of the slope
-        fractal_dim = -slope
-        
-        print(f"Regression on {len(valid_sizes)} points: D={fractal_dim:.4f}, R²={r_value**2:.4f}")
-        
-        # Sanity check on dimension value
-        if fractal_dim < 1.0 or fractal_dim > 2.0:
-            print(f"Warning: Unusual fractal dimension value: {fractal_dim}. Clamping to [1, 2] range.")
-            fractal_dim = max(1.0, min(2.0, fractal_dim))
-    else:
-        print("Warning: Not enough valid box sizes for reliable regression.")
-        # Fallback to a reasonable dimension
-        fractal_dim = 1.5
+    return np.array(box_sizes), np.array(box_counts), fractal_dim 
+
     
-    # Plot the regression result
-    plt.figure(figsize=(8, 6))
-    plt.loglog(box_sizes, box_counts, 'bo-', label='All data points')
-    if len(valid_sizes) >= 2:
-        plt.loglog(valid_sizes, valid_counts, 'ro-', label='Points used for regression')
+    # = np.log(valid_sizes)
+    #     log_counts = np.log(valid_counts)
         
-        # Plot regression line
-        x_line = np.array([min(valid_sizes), max(valid_sizes)])
-        y_line = np.exp(intercept) * x_line**slope
-        plt.loglog(x_line, y_line, 'g--', label=f'Fit: D={fractal_dim:.4f}, R²={r_value**2:.4f}')
-    
-    plt.xlabel('Box Size (log scale)')
-    plt.ylabel('Box Count (log scale)')
-    plt.title('Box Counting Regression')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    plt.savefig('results/box_counting_regression.png')
-    plt.close()
-    
-    return np.array(box_sizes), np.array(box_counts), fractal_dim = np.log(1.0 / np.array(box_sizes))
-    log_counts = np.log(np.array(box_counts))
-    
-    # Debug print
-    print(f"Log sizes: {log_sizes}")
-    print(f"Log counts: {log_counts}")
-    
-    # Linear regression to find slope (fractal dimension)
-    if len(log_sizes) > 1:
-        # Check for valid values
-        valid_indices = ~np.isnan(log_sizes) & ~np.isnan(log_counts) & ~np.isinf(log_sizes) & ~np.isinf(log_counts)
+    #     # Linear regression to find slope
+    #     slope, intercept, r_value, p_value, std_err = linregress(log_sizes, log_counts)
         
-        if np.sum(valid_indices) >= 2:
-            slope, intercept, r_value, p_value, std_err = linregress(
-                log_sizes[valid_indices], 
-                log_counts[valid_indices]
-            )
-            fractal_dim = slope
+    #     # Fractal dimension is the negative of the slope
+    #     fractal_dim = -slope
+        
+    #     print(f"Regression on {len(valid_sizes)} points: D={fractal_dim:.4f}, R²={r_value**2:.4f}")
+        
+    #     # Sanity check on dimension value
+    #     if fractal_dim < 1.0 or fractal_dim > 2.0:
+    #         print(f"Warning: Unusual fractal dimension value: {fractal_dim}. Clamping to [1, 2] range.")
+    #         fractal_dim = max(1.0, min(2.0, fractal_dim))
+    # else:
+    #     print("Warning: Not enough valid box sizes for reliable regression.")
+    #     # Fallback to a reasonable dimension
+    #     fractal_dim = 1.5
+    
+    # # Plot the regression result
+    # plt.figure(figsize=(8, 6))
+    # plt.loglog(box_sizes, box_counts, 'bo-', label='All data points')
+    # if len(valid_sizes) >= 2:
+    #     plt.loglog(valid_sizes, valid_counts, 'ro-', label='Points used for regression')
+        
+    #     # Plot regression line
+    #     x_line = np.array([min(valid_sizes), max(valid_sizes)])
+    #     y_line = np.exp(intercept) * x_line**slope
+    #     plt.loglog(x_line, y_line, 'g--', label=f'Fit: D={fractal_dim:.4f}, R²={r_value**2:.4f}')
+    
+    # plt.xlabel('Box Size (log scale)')
+    # plt.ylabel('Box Count (log scale)')
+    # plt.title('Box Counting Regression')
+    # plt.grid(True, alpha=0.3)
+    # plt.legend()
+    # plt.savefig('results/box_counting_regression.png')
+    # plt.close()
+    
+    # return np.array(box_sizes), np.array(box_counts), fractal_dim = np.log(1.0 / np.array(box_sizes))
+    # log_counts = np.log(np.array(box_counts))
+    
+    # # Debug print
+    # print(f"Log sizes: {log_sizes}")
+    # print(f"Log counts: {log_counts}")
+    
+    # # Linear regression to find slope (fractal dimension)
+    # if len(log_sizes) > 1:
+    #     # Check for valid values
+    #     valid_indices = ~np.isnan(log_sizes) & ~np.isnan(log_counts) & ~np.isinf(log_sizes) & ~np.isinf(log_counts)
+        
+    #     if np.sum(valid_indices) >= 2:
+    #         slope, intercept, r_value, p_value, std_err = linregress(
+    #             log_sizes[valid_indices], 
+    #             log_counts[valid_indices]
+    #         )
+    #         fractal_dim = slope
             
-            # Debug print
-            print(f"Regression result: slope={slope}, r_value={r_value}, std_err={std_err}")
+    #         # Debug print
+    #         print(f"Regression result: slope={slope}, r_value={r_value}, std_err={std_err}")
             
-            # Check for reasonable dimension value
-            if fractal_dim < 0 or fractal_dim > 3:
-                print(f"Warning: Unusual fractal dimension value: {fractal_dim}. Clamping to [1, 2] range.")
-                fractal_dim = max(1.0, min(2.0, abs(fractal_dim)))
-        else:
-            print("Warning: Not enough valid data points for regression.")
-            fractal_dim = 1.5  # Fallback to a reasonable default
-    else:
-        print("Warning: Not enough box sizes for regression.")
-        fractal_dim = 1.5  # Fallback to a reasonable default
+    #         # Check for reasonable dimension value
+    #         if fractal_dim < 0 or fractal_dim > 3:
+    #             print(f"Warning: Unusual fractal dimension value: {fractal_dim}. Clamping to [1, 2] range.")
+    #             fractal_dim = max(1.0, min(2.0, abs(fractal_dim)))
+    #     else:
+    #         print("Warning: Not enough valid data points for regression.")
+    #         fractal_dim = 1.5  # Fallback to a reasonable default
+    # else:
+    #     print("Warning: Not enough box sizes for regression.")
+    #     fractal_dim = 1.5  # Fallback to a reasonable default
             
-    return np.array(box_sizes), np.array(box_counts), fractal_dim
+    # return np.array(box_sizes), np.array(box_counts), fractal_dim
 
 def save_fractal_images(grid, js_matrix, H, filename_base):
     """
