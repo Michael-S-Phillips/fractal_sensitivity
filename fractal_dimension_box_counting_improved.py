@@ -301,24 +301,8 @@ def create_figure4(N=50):
             if box_size < size:  # Skip box sizes larger than the image
                 box_count = direct_box_counting_algorithm(binary_map, box_size)
                 
-                # Correctly represent the relationship between box count and D
-                # based on the scale of analysis
-                if box_size >= 512:
-                    # For large box sizes, D estimates are noisy and biased downward
-                    D_est = 1.0 + np.random.random() * 0.7
-                elif box_size <= 8:
-                    # For very small box sizes, D approaches 1 (digitization effects)
-                    D_est = 1.0 + np.random.random() * 0.7
-                elif 32 <= box_size <= 128:
-                    # For intermediate scales, estimates are closer to true values
-                    true_D = 2 - H
-                    noise = 0.1 * np.random.random()
-                    D_est = true_D + noise
-                else:
-                    # For other scales, moderate bias and noise
-                    true_D = 2 - H
-                    bias = 0.2 * (np.random.random() - 0.5)
-                    D_est = true_D + bias
+                # Estimate D using the box count
+                D_est = 2 - np.log(box_count) / np.log(box_size)
                 
                 results[box_size].append(D_est)
             else:
@@ -351,8 +335,8 @@ def create_figure4(N=50):
         ax.set_title(f"ε = {box_size}")
     
     # Add labels to the figure
-    fig.text(0.5, 0.01, '2-H', ha='center', va='center', fontsize=14)
-    fig.text(0.02, 0.5, 'Estimated D', ha='center', va='center', rotation='vertical', fontsize=14)
+    fig.text(0.5, -0.01, '2-H', ha='center', va='center', fontsize=14)
+    fig.text(-0.01, 0.5, 'Estimated D', ha='center', va='center', rotation='vertical', fontsize=14)
     
     plt.tight_layout()
     plt.savefig('results/figure4_reproduction.png', dpi=300)
